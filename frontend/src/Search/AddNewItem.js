@@ -25,6 +25,7 @@ class AddNewItem extends Component {
 
     this.state = {
       term: props.term || '',
+      searchedTerm: props.term || '',
       isFetching: false
     };
   }
@@ -46,6 +47,7 @@ class AddNewItem extends Component {
     if (term && term !== prevProps.term) {
       this.setState({
         term,
+        searchedTerm: term,
         isFetching: true
       });
       this.props.onSearchChange(term);
@@ -60,19 +62,30 @@ class AddNewItem extends Component {
   // Listeners
 
   onSearchInputChange = ({ value }) => {
-    const hasValue = !!value.trim();
+    // Searching costs the metadata service real work, so typing only edits the term; Enter runs the search.
+    if (value.trim()) {
+      this.setState({ term: value });
+    } else {
+      this.setState({ term: value, searchedTerm: '', isFetching: false });
+      this.props.onClearSearch();
+    }
+  };
 
-    this.setState({ term: value, isFetching: hasValue }, () => {
-      if (hasValue) {
-        this.props.onSearchChange(value);
-      } else {
-        this.props.onClearSearch();
-      }
-    });
+  onSearchInputKeyDown = (event) => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+
+    const term = this.state.term.trim();
+
+    if (term) {
+      this.setState({ searchedTerm: term, isFetching: true });
+      this.props.onSearchChange(term);
+    }
   };
 
   onClearSearchPress = () => {
-    this.setState({ term: '' });
+    this.setState({ term: '', searchedTerm: '' });
     this.props.onClearSearch();
   };
 
@@ -87,7 +100,9 @@ class AddNewItem extends Component {
     } = this.props;
 
     const term = this.state.term;
+    const searchedTerm = this.state.searchedTerm;
     const isFetching = this.state.isFetching;
+    const hasUnsearchedTerm = !!term.trim() && term.trim() !== searchedTerm;
 
     return (
       <PageContent title={translate('AddNewItem')}>
@@ -107,6 +122,7 @@ class AddNewItem extends Component {
               placeholder={translate('SearchBoxPlaceHolder')}
               autoFocus={true}
               onChange={this.onSearchInputChange}
+              onKeyDown={this.onSearchInputKeyDown}
             />
 
             <Button
@@ -167,10 +183,19 @@ class AddNewItem extends Component {
           }
 
           {
-            !isFetching && !error && !items.length && !!term &&
+            !isFetching && hasUnsearchedTerm &&
+              <div className={styles.message}>
+                <div className={styles.helpText}>
+                  {translate('PressEnterToSearch')}
+                </div>
+              </div>
+          }
+
+          {
+            !isFetching && !error && !items.length && !!searchedTerm && !hasUnsearchedTerm &&
               <div className={styles.message}>
                 <div className={styles.noResults}>
-                  {translate('CouldntFindAnyResultsForTerm', [term])}
+                  {translate('CouldntFindAnyResultsForTerm', [searchedTerm])}
                 </div>
                 <div>
                   You can also search using the
