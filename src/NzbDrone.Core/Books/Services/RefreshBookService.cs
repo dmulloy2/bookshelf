@@ -106,15 +106,19 @@ namespace NzbDrone.Core.Books
 
             var book = remote.SingleOrDefault(x => x.ForeignBookId == local.ForeignBookId);
 
+            if (book == null)
+            {
+                // Not listed under its own ID. Ask for the book itself before deciding it's gone: when the metadata
+                // source has merged a duplicate work into another, it answers with the surviving work's ID, and the
+                // merge handling then moves or merges the local book onto that one. Taking only an exact ID match
+                // deleted such books when they had no files, and left them stale beside a duplicate when they did.
+                data = GetSkyhookData(local);
+                book = data?.Books?.Value?.SingleOrDefault();
+            }
+
             if (book == null && ShouldDelete(local))
             {
                 return result;
-            }
-
-            if (book == null)
-            {
-                data = GetSkyhookData(local);
-                book = data?.Books?.Value?.SingleOrDefault(x => x.ForeignBookId == local.ForeignBookId);
             }
 
             result.Entity = book;
@@ -147,6 +151,11 @@ namespace NzbDrone.Core.Books
                     QualityProfileId = oldAuthor.QualityProfileId,
                     RootFolderPath = _rootFolderService.GetBestRootFolderPath(oldAuthor.Path),
                     Monitored = oldAuthor.Monitored,
+
+                    // This author only exists to hold the book that moved, which keeps its own monitored state.
+                    // Their other books shouldn't be monitored, and so searched for, just because one of the old
+                    // author's books turned out to be theirs.
+                    MonitorNewItems = NewItemMonitorTypes.None,
                     Tags = oldAuthor.Tags
                 };
                 _logger.Debug($"Adding missing parent author {addAuthor}");
