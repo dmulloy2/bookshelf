@@ -7,6 +7,7 @@ using NzbDrone.Core.Books;
 using NzbDrone.Core.Exceptions;
 using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.MetadataSource;
+using NzbDrone.Core.Profiles.Metadata;
 using NzbDrone.Core.Test.Framework;
 
 namespace NzbDrone.Core.Test.MusicTests
@@ -60,6 +61,17 @@ namespace NzbDrone.Core.Test.MusicTests
             Mocker.GetMock<IEditionService>()
                 .Setup(s => s.GetEditionsForRefresh(It.IsAny<int>(), It.IsAny<List<string>>()))
                 .Returns(new List<Edition>());
+
+            Mocker.GetMock<IMetadataProfileService>()
+                .Setup(s => s.FilterBooks(It.IsAny<Author>(), It.IsAny<int>()))
+                .Returns((Author a, int id) => a.Books.Value);
+        }
+
+        private void GivenTheProfileExcludesEverything()
+        {
+            Mocker.GetMock<IMetadataProfileService>()
+                .Setup(s => s.FilterBooks(It.IsAny<Author>(), It.IsAny<int>()))
+                .Returns(new List<Book>());
         }
 
         private void GivenMetadataAnswersWith(string foreignBookId, string foreignAuthorId = "500")
@@ -114,6 +126,34 @@ namespace NzbDrone.Core.Test.MusicTests
             Subject.RefreshBookInfo(_book, new List<Book>(), _author, false);
 
             Mocker.GetMock<IAddAuthorService>().Verify(s => s.AddAuthor(It.Is<Author>(a => a.MonitorNewItems == NewItemMonitorTypes.None), It.IsAny<bool>()), Times.Once());
+        }
+
+        [Test]
+        public void should_delete_a_merged_book_the_metadata_profile_excludes()
+        {
+            // The surviving work is, say, a graphic novel adaptation the author's own list leaves out.
+            GivenMetadataAnswersWith(MergedId);
+            GivenTheProfileExcludesEverything();
+
+            Subject.RefreshBookInfo(_book, new List<Book>(), _author, false);
+
+            Mocker.GetMock<IBookService>().Verify(s => s.DeleteBook(10, false, It.IsAny<bool>()), Times.Once());
+        }
+
+        [Test]
+        public void should_still_move_an_excluded_merged_book_that_has_files()
+        {
+            GivenMetadataAnswersWith(MergedId);
+            GivenTheProfileExcludesEverything();
+
+            Mocker.GetMock<IMediaFileService>()
+                .Setup(s => s.GetFilesByBook(10))
+                .Returns(new List<BookFile> { new BookFile() });
+
+            Subject.RefreshBookInfo(_book, new List<Book>(), _author, false);
+
+            Mocker.GetMock<IBookService>().Verify(s => s.DeleteBook(It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<bool>()), Times.Never());
+            Mocker.GetMock<IBookService>().Verify(s => s.UpdateMany(It.Is<List<Book>>(l => l.Count == 1 && l[0].ForeignBookId == MergedId)), Times.AtLeastOnce());
         }
     }
 }

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using NLog;
 using NzbDrone.Common.Instrumentation.Extensions;
+using NzbDrone.Core.Books.Calibre;
 using NzbDrone.Core.Books.Commands;
 using NzbDrone.Core.Books.Events;
 using NzbDrone.Core.Exceptions;
@@ -13,6 +14,7 @@ using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.Messaging.Commands;
 using NzbDrone.Core.Messaging.Events;
 using NzbDrone.Core.MetadataSource;
+using NzbDrone.Core.Profiles.Metadata;
 using NzbDrone.Core.RootFolders;
 
 namespace NzbDrone.Core.Books
@@ -41,6 +43,7 @@ namespace NzbDrone.Core.Books
         private readonly IEventAggregator _eventAggregator;
         private readonly ICheckIfBookShouldBeRefreshed _checkIfBookShouldBeRefreshed;
         private readonly IMapCoversToLocal _mediaCoverService;
+        private readonly IMetadataProfileService _metadataProfileService;
         private readonly Logger _logger;
 
         public RefreshBookService(IBookService bookService,
@@ -57,6 +60,7 @@ namespace NzbDrone.Core.Books
                                   IEventAggregator eventAggregator,
                                   ICheckIfBookShouldBeRefreshed checkIfBookShouldBeRefreshed,
                                   IMapCoversToLocal mediaCoverService,
+                                  IMetadataProfileService metadataProfileService,
                                   Logger logger)
         : base(logger, authorMetadataService)
         {
@@ -73,6 +77,7 @@ namespace NzbDrone.Core.Books
             _eventAggregator = eventAggregator;
             _checkIfBookShouldBeRefreshed = checkIfBookShouldBeRefreshed;
             _mediaCoverService = mediaCoverService;
+            _metadataProfileService = metadataProfileService;
             _logger = logger;
         }
 
@@ -114,6 +119,11 @@ namespace NzbDrone.Core.Books
                 // deleted such books when they had no files, and left them stale beside a duplicate when they did.
                 data = GetSkyhookData(local);
                 book = data?.Books?.Value?.SingleOrDefault();
+
+                if (book != null)
+                {
+                    book = ApplyMetadataProfile(local, book, data);
+                }
             }
 
             if (book == null && ShouldDelete(local))
@@ -128,6 +138,30 @@ namespace NzbDrone.Core.Books
             }
 
             return result;
+        }
+
+        private Book ApplyMetadataProfile(Book local, Book book, Author data)
+        {
+            // The author's book list has already been through the metadata profile, but a direct lookup hasn't. Hold
+            // it to the same rules, so a work the profile excludes (a graphic novel, a box set) is still deleted
+            // rather than moved, and a moved book doesn't bring back the editions the profile drops.
+            var editions = book.Editions.Value;
+            var allowed = _metadataProfileService.FilterBooks(data, local.Author.Value.MetadataProfileId).SingleOrDefault();
+
+            if (allowed != null)
+            {
+                return allowed;
+            }
+
+            if (ShouldDelete(local))
+            {
+                _logger.Debug($"{local} was replaced by {book}, which the metadata profile excludes");
+                return null;
+            }
+
+            // Kept for its files or because it was added by hand; filtering may have emptied its editions.
+            book.Editions = editions;
+            return book;
         }
 
         protected override void EnsureNewParent(Book local, Book remote)
@@ -308,6 +342,8 @@ namespace NzbDrone.Core.Books
             }
 
             var toMonitor = monitored.OrderByDescending(x => x.Id > 0 ? _mediaFileService.GetFilesByEdition(x.Id).Count : 0)
+                .ThenByDescending(x => x.IsEbook)
+                .ThenByDescending(x => x.Language.CanonicalizeLanguage() == "eng")
                 .ThenByDescending(x => x.Ratings.Popularity).First();
 
             monitored.ForEach(x => x.Monitored = false);

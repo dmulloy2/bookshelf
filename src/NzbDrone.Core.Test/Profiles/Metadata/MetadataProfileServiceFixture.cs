@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FizzWare.NBuilder;
+using FluentAssertions;
 using Moq;
 using NUnit.Framework;
 using NzbDrone.Core.Books;
@@ -10,6 +11,7 @@ using NzbDrone.Core.ImportLists;
 using NzbDrone.Core.Lifecycle;
 using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.Profiles.Metadata;
+using NzbDrone.Core.Profiles.Releases;
 using NzbDrone.Core.RootFolders;
 using NzbDrone.Core.Test.Framework;
 
@@ -356,6 +358,67 @@ namespace NzbDrone.Core.Test.Profiles.Metadata
             // Assert - Should return the filtered books without crashing
             Assert.NotNull(result);
             Assert.IsInstanceOf<List<Book>>(result);
+        }
+
+        [Test]
+        public void FilterBooks_should_match_ignored_terms_against_edition_format()
+        {
+            Mocker.SetConstant<ITermMatcherService>(Mocker.Resolve<TermMatcherService>());
+
+            var profile = Builder<MetadataProfile>.CreateNew()
+                .With(p => p.Id = 1)
+                .With(p => p.MinPopularity = 0)
+                .With(p => p.MinPages = 0)
+                .With(p => p.AllowedLanguages = null)
+                .With(p => p.SkipMissingDate = false)
+                .With(p => p.SkipMissingIsbn = false)
+                .With(p => p.SkipPartsAndSets = false)
+                .With(p => p.SkipSeriesSecondary = false)
+                .With(p => p.Ignored = new List<string> { "graphic novel", "/\\bcomics?\\b/i" })
+                .Build();
+
+            Edition GivenEdition(string id, string format) => Builder<Edition>.CreateNew()
+                .With(e => e.ForeignEditionId = id)
+                .With(e => e.Title = "Kindred")
+                .With(e => e.Format = format)
+                .Build();
+
+            // The edition titles don't say so: only the format tells the adaptation apart.
+            var ebook = GivenEdition("1", "Kindle Edition");
+            var book = Builder<Book>.CreateNew()
+                .With(b => b.ForeignBookId = "123")
+                .With(b => b.Ratings = new Ratings { Value = 4, Votes = 100 })
+                .With(b => b.Title = "Kindred")
+                .With(b => b.Editions = new List<Edition> { ebook, GivenEdition("2", "Graphic Novel"), GivenEdition("3", "Comic") })
+                .Build();
+            var adaptation = Builder<Book>.CreateNew()
+                .With(b => b.ForeignBookId = "456")
+                .With(b => b.Ratings = new Ratings { Value = 4, Votes = 100 })
+                .With(b => b.Title = "Kindred: A Graphic Novel Adaptation")
+                .With(b => b.Editions = new List<Edition> { GivenEdition("4", "Paperback") })
+                .Build();
+            var comicsOnly = Builder<Book>.CreateNew()
+                .With(b => b.ForeignBookId = "789")
+                .With(b => b.Ratings = new Ratings { Value = 4, Votes = 100 })
+                .With(b => b.Title = "Parable of the Sower")
+                .With(b => b.Editions = new List<Edition> { GivenEdition("5", "comics") })
+                .Build();
+
+            var author = Builder<Author>.CreateNew()
+                .With(a => a.ForeignAuthorId = "1")
+                .With(a => a.Metadata = Builder<AuthorMetadata>.CreateNew().With(m => m.ForeignAuthorId = "1").Build())
+                .With(a => a.Series = null)
+                .With(a => a.Books = new List<Book> { book, adaptation, comicsOnly })
+                .Build();
+
+            Mocker.GetMock<IMetadataProfileRepository>().Setup(s => s.Get(1)).Returns(profile);
+            Mocker.GetMock<IAuthorService>().Setup(s => s.FindById(It.IsAny<string>())).Returns((Author)null);
+            Mocker.GetMock<IMediaFileService>().Setup(s => s.GetFilesByAuthor(It.IsAny<int>())).Returns(new List<BookFile>());
+
+            var result = Subject.FilterBooks(author, 1);
+
+            result.Should().ContainSingle().Which.ForeignBookId.Should().Be("123");
+            result[0].Editions.Value.Should().ContainSingle().Which.Should().Be(ebook);
         }
     }
 }
