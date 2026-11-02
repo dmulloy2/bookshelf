@@ -12,10 +12,12 @@ on:
     branches: [develop, master]
     paths-ignore:
       - ".github/**"
+      - "docker/dev/**"
       - "src/Readarr.Api.*/openapi.json"
   pull_request:
     paths-ignore:
       - ".github/**"
+      - "docker/dev/**"
       - "src/NzbDrone.Core/Localization/Core"
       - "src/Readarr.Api.*/openapi.json"
 
