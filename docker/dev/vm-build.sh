@@ -49,23 +49,49 @@ HERE=docker/dev
 step() { printf '\n==> %s\n' "$*"; }
 remote() { ssh "$HOST" "$@"; }
 
+# One lock on the host covers the whole run - sync, build and smoke test - since every run shares the same tree, image
+# tag and container. It is a directory, which mkdir creates atomically, recording who holds it; one older than 30
+# minutes is from a run that died without cleaning up and is taken over.
+LOCKED=no
+release_lock() {
+  if [ "$LOCKED" = yes ]; then
+    remote 'rm -rf "$HOME/bookshelf-dev/.lock.d"' || true
+  fi
+}
+trap release_lock EXIT
+OWNER="$(hostname -s):$$"
+remote "bash -s" -- "$OWNER" <<'LOCK' || exit 1
+set -u
+mkdir -p "$HOME/bookshelf-dev"
+lock="$HOME/bookshelf-dev/.lock.d"
+take() { mkdir "$lock" 2>/dev/null && echo "$(date +%s) $1" > "$lock/owner"; }
+take "$1" && exit 0
+since=$(cut -d' ' -f1 "$lock/owner" 2>/dev/null || echo 0)
+if [ $(( $(date +%s) - ${since:-0} )) -gt 1800 ]; then
+  echo "taking over a stale lock: $(cat "$lock/owner" 2>/dev/null)" >&2
+  rm -rf "$lock" && take "$1" && exit 0
+fi
+echo "another run holds the build lock on this host: $(cut -d' ' -f2- "$lock/owner" 2>/dev/null), since $(date -d "@$since" '+%H:%M:%S' 2>/dev/null)" >&2
+exit 1
+LOCK
+LOCKED=yes
+
 if [ "$CLEAN" = yes ]; then
   step "Cleaning $HOST"
   remote 'docker rm -f bookshelf-dev >/dev/null 2>&1 || true
-          docker run --rm -v "$HOME/bookshelf-dev:/w" alpine sh -c "rm -rf /w/*" 2>/dev/null || true
-          rm -rf "$HOME/bookshelf-dev"
+          docker run --rm -v "$HOME/bookshelf-dev:/w" alpine sh -c "rm -rf /w/tree /w/image /w/config.*" 2>/dev/null || true
+          rm -rf "$HOME/bookshelf-dev/tree" "$HOME/bookshelf-dev/image" "$HOME/bookshelf-dev/.front-stamp"
           docker volume rm bsdev-nuget bsdev-yarn >/dev/null 2>&1 || true
           docker image rm bookshelf:dev >/dev/null 2>&1 || true
           echo done'
   exit 0
 fi
 
-# Everything below runs under one lock on the host, so two builds never fight over the same tree or CPUs.
 step "Syncing the working tree to $HOST"
 # A snapshot of what git would commit: tracked and untracked files minus ignored ones, with LF line endings. Git's
 # checkout on some machines is CRLF, and CRLF in the image's s6 init scripts stops the container from starting.
 INDEX=$(mktemp -u)
-trap 'rm -f "$INDEX"' EXIT
+trap 'rm -f "$INDEX"; release_lock' EXIT
 GIT_INDEX_FILE=$INDEX git read-tree HEAD
 GIT_INDEX_FILE=$INDEX git -c core.safecrlf=false add -A 2>/dev/null
 TREE=$(GIT_INDEX_FILE=$INDEX git write-tree)
@@ -90,8 +116,6 @@ remote "bash -s" -- "$SDK_IMAGE" "$NODE_IMAGE" "$CPUS" "$RID" "$FRAMEWORK" "$VER
 set -euo pipefail
 SDK_IMAGE=$1; NODE_IMAGE=$2; CPUS=$3; RID=$4; FRAMEWORK=$5; VERSION=$6; TAG=$7; COMMIT=$8; FRONT_STAMP=$9
 cd "$HOME/bookshelf-dev"
-exec 9>.lock
-flock -n 9 || { echo "another build is running on this host"; exit 1; }
 T0=$(date +%s)
 lap() { printf '    (%ss)\n' "$(( $(date +%s) - T0 ))"; T0=$(date +%s); }
 
@@ -157,7 +181,7 @@ RC=$?
 set -e
 
 if [ "$KEEP" = yes ]; then
-  echo "left running: ssh $HOST docker logs bookshelf-dev   (config in $CONFIG)"
+  echo "left running: ssh $HOST docker logs bookshelf-dev   (config in $CONFIG; the next run replaces it)"
 else
   remote "docker rm -f bookshelf-dev >/dev/null 2>&1; rm -rf '$CONFIG'"
 fi
