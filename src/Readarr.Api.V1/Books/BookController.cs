@@ -155,7 +155,7 @@ namespace Readarr.Api.V1.Books
         }
 
         [RestPostById]
-        public ActionResult<BookResource> AddBook(BookResource bookResource)
+        public ActionResult<BookResource> AddBook([FromBody] BookResource bookResource)
         {
             var book = _addBookService.AddBook(bookResource.ToModel());
 
@@ -163,7 +163,7 @@ namespace Readarr.Api.V1.Books
         }
 
         [RestPutById]
-        public ActionResult<BookResource> UpdateBook(BookResource bookResource)
+        public ActionResult<BookResource> UpdateBook([FromBody] BookResource bookResource)
         {
             var book = _bookService.GetBook(bookResource.Id);
 
