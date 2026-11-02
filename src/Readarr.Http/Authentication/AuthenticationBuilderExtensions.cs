@@ -1,9 +1,11 @@
 using System;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using Diacritical;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Net.Http.Headers;
 using NzbDrone.Core.Authentication;
 using NzbDrone.Core.Configuration;
 
@@ -49,6 +51,8 @@ namespace Readarr.Http.Authentication
                     options.ExpireTimeSpan = TimeSpan.FromDays(7);
                     options.SlidingExpiration = true;
                     options.ReturnUrlParameter = "returnUrl";
+                    options.Events.OnRedirectToLogin = context => EventOnRedirectCookiesLogin(context, 401);
+                    options.Events.OnRedirectToAccessDenied = context => EventOnRedirectCookiesLogin(context, 403);
                 });
 
             return services.AddAuthentication()
@@ -66,6 +70,25 @@ namespace Readarr.Http.Authentication
                     options.HeaderName = "X-Api-Key";
                     options.QueryName = "access_token";
                 });
+        }
+
+        // Before .NET 10 only AJAX requests got a 401 from the cookie handler and everything else was redirected to
+        // the login page. .NET 10 returns 401 for anything it takes to be an API endpoint, which includes the page
+        // request for the UI, so a browser got a blank 401 instead of the login screen. Keep the old behaviour.
+        private static Task EventOnRedirectCookiesLogin(RedirectContext<CookieAuthenticationOptions> context, int statusCode)
+        {
+            if (string.Equals(context.Request.Query[HeaderNames.XRequestedWith], "XMLHttpRequest", StringComparison.Ordinal) ||
+                string.Equals(context.Request.Headers.XRequestedWith, "XMLHttpRequest", StringComparison.Ordinal))
+            {
+                context.Response.Headers.Location = context.RedirectUri;
+                context.Response.StatusCode = statusCode;
+            }
+            else
+            {
+                context.Response.Redirect(context.RedirectUri);
+            }
+
+            return Task.CompletedTask;
         }
     }
 }
