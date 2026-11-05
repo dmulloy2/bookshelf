@@ -6,6 +6,7 @@ using NzbDrone.Common.Extensions;
 using NzbDrone.Core.Books;
 using NzbDrone.Core.Books.Events;
 using NzbDrone.Core.Download;
+using NzbDrone.Core.Download.TrackedDownloads;
 using NzbDrone.Core.HealthCheck;
 using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.MediaFiles.Events;
@@ -67,10 +68,16 @@ namespace NzbDrone.Core.Notifications
                 tracks.Count);
         }
 
-        private string GetBookIncompleteImportMessage(string source)
+        private string GetBookIncompleteImportMessage(TrackedDownload trackedDownload)
         {
-            return string.Format("Readarr failed to Import all files for {0}",
-                source);
+            var reasons = trackedDownload.StatusMessages
+                .SelectMany(m => m.Messages ?? new List<string>())
+                .Distinct()
+                .ToList();
+
+            var message = string.Format("Readarr failed to Import all files for {0}", trackedDownload.DownloadItem.Title);
+
+            return reasons.Any() ? $"{message}: {string.Join("; ", reasons)}" : message;
         }
 
         private string FormatMissing(object value)
@@ -369,14 +376,17 @@ namespace NzbDrone.Core.Notifications
             // TODO: Build out this message so that we can pass on what failed and what was successful
             var downloadMessage = new BookDownloadMessage
             {
-                Message = GetBookIncompleteImportMessage(message.TrackedDownload.DownloadItem.Title)
+                Message = GetBookIncompleteImportMessage(message.TrackedDownload)
             };
+
+            // Downloads that didn't come from Readarr may not have matched an author.
+            var author = message.TrackedDownload.RemoteBook?.Author;
 
             foreach (var notification in _notificationFactory.OnImportFailureEnabled())
             {
                 try
                 {
-                    if (ShouldHandleAuthor(notification.Definition, message.TrackedDownload.RemoteBook.Author))
+                    if (author == null ? notification.Definition.Tags.Empty() : ShouldHandleAuthor(notification.Definition, author))
                     {
                         notification.OnImportFailure(downloadMessage);
                         _notificationStatusService.RecordSuccess(notification.Definition.Id);

@@ -82,6 +82,7 @@ namespace NzbDrone.Core.Download
 
             if (!ValidatePath(trackedDownload))
             {
+                SendImportIncompleteNotification(trackedDownload);
                 return;
             }
 
@@ -94,6 +95,7 @@ namespace NzbDrone.Core.Download
             {
                 trackedDownload.Warn("No files found are eligible for import in {0}", outputPath);
                 trackedDownload.State = TrackedDownloadState.ImportPending;
+                SendImportIncompleteNotification(trackedDownload);
                 return;
             }
 
@@ -113,7 +115,7 @@ namespace NzbDrone.Core.Download
                     .ToArray();
 
                 trackedDownload.Warn(statusMessages);
-                _eventAggregator.PublishEvent(new BookImportIncompleteEvent(trackedDownload));
+                SendImportIncompleteNotification(trackedDownload);
                 return;
             }
         }
@@ -183,6 +185,18 @@ namespace NzbDrone.Core.Download
 
             _logger.Debug("Not all books have been imported for {0}", trackedDownload.DownloadItem.Title);
             return false;
+        }
+
+        private void SendImportIncompleteNotification(TrackedDownload trackedDownload)
+        {
+            // A download waiting for manual import is retried on every refresh, so notify once per download.
+            if (trackedDownload.HasNotifiedImportIncomplete)
+            {
+                return;
+            }
+
+            trackedDownload.HasNotifiedImportIncomplete = true;
+            _eventAggregator.PublishEvent(new BookImportIncompleteEvent(trackedDownload));
         }
 
         private void SetImportItem(TrackedDownload trackedDownload)
