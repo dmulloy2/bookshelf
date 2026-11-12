@@ -263,6 +263,11 @@ namespace NzbDrone.Core.Notifications
 
         public void Handle(BookDeletedEvent message)
         {
+            if (!message.Book.Monitored)
+            {
+                return;
+            }
+
             var deleteMessage = new BookDeleteMessage(message.Book, message.DeleteFiles);
 
             foreach (var notification in _notificationFactory.OnBookDeleteEnabled())
