@@ -3,10 +3,10 @@
 {
   "folders": [
     {
-      "path": ".."
+      "path": "."
     },
     {
-      "path": "../frontend"
+      "path": "frontend"
     }
   ],
   "settings": {}
