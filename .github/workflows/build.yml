@@ -33,11 +33,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           fetch-depth: 1
 
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db  # v3.6.3
 
       - name: Setup Environment Variables
         id: variables
@@ -47,7 +47,7 @@ jobs:
           echo "DATE=$(date --rfc-3339=date)" >> "$GITHUB_ENV"
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: _cache/nuget
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', 'src/**/*.csproj', 'global.json') }}
@@ -55,7 +55,7 @@ jobs:
             nuget-${{ runner.os }}-
 
       - name: Cache Node modules
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: |
             _cache/node
@@ -65,7 +65,7 @@ jobs:
             node-${{ runner.os }}-
 
       - name: Cache MSBuild outputs
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: _cache/msbuild
           key: msbuild-${{ runner.os }}-${{ hashFiles('src/**/*.cs', 'src/**/*.csproj', 'src/**/*.targets', 'src/**/*.props') }}
@@ -74,7 +74,7 @@ jobs:
             msbuild-${{ runner.os }}-
 
       - name: Cache Webpack
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: _cache/webpack
           key: webpack-${{ runner.os }}-${{ hashFiles('frontend/src/**/*', 'yarn.lock') }}
@@ -100,7 +100,7 @@ jobs:
         run: ./test.sh Linux Unit Test
 
       - name: Report test results
-        uses: dorny/test-reporter@v2
+        uses: dorny/test-reporter@df6247429542221bc30d46a036ee47af1102c451  # v2.7.0
         if: always()
         with:
           name: Unit Test Results
@@ -109,9 +109,9 @@ jobs:
           reporter: dotnet-nunit
           fail-on-error: true
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
 
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051  # v5.10.0
         id: gr_meta
         with:
           images: ghcr.io/${{ github.repository }}
@@ -120,7 +120,7 @@ jobs:
             type=raw,value=softcover-v${{ env.READARR_VERSION }}
             type=raw,value=softcover-v${{ env.READARR_VERSION }}.${{ github.run_number }}
 
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051  # v5.10.0
         id: hc_meta
         with:
           images: ghcr.io/${{ github.repository }}
@@ -129,14 +129,14 @@ jobs:
             type=raw,value=hardcover-v${{ env.READARR_VERSION }}
             type=raw,value=hardcover-v${{ env.READARR_VERSION }}.${{ github.run_number }}
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
         if: ${{ github.event_name != 'pull_request' }}
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
         with:
           context: .
           file: ./docker/Dockerfile
@@ -149,7 +149,7 @@ jobs:
             COMMIT_HASH=${{ github.event.pull_request.head.sha || github.sha }}
             BUILD_DATE=${{ env.DATE }}
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
         with:
           context: .
           file: ./docker/Dockerfile
