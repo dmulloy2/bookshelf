@@ -1,39 +1,75 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for more information:
-# https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
-
+# Dependency updates: weekly, with grouped minor/patch updates, a cooldown so a freshly published release is not
+# adopted the day it appears, a `chore` commit prefix, and labels. Major versions stay ungrouped so each gets its own
+# pull request and CI run.
 version: 2
+
 updates:
- - package-ecosystem: "npm"
-   directory: "/"
-   schedule:
-     interval: weekly
-   open-pull-requests-limit: 5
-   groups:
-     npm-minor-patch:
-       update-types:
-         - minor
-         - patch
- - package-ecosystem: "nuget"
-   directory: "/src"
-   schedule:
-     interval: weekly
-   open-pull-requests-limit: 5
-   groups:
-     nuget-minor-patch:
-       update-types:
-         - minor
-         - patch
- - package-ecosystem: "docker"
-   directory: "/docker"
-   schedule:
-     interval: weekly
- - package-ecosystem: "github-actions"
-   directory: "/"
-   schedule:
-     interval: weekly
-   groups:
-     github-actions:
-       patterns:
-         - "*"
+  - package-ecosystem: "npm"
+    directory: "/"
+    open-pull-requests-limit: 5
+    schedule:
+      interval: "weekly"
+    cooldown:
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "javascript"
+      - "dependencies"
+
+  - package-ecosystem: "nuget"
+    directory: "/src"
+    open-pull-requests-limit: 5
+    schedule:
+      interval: "weekly"
+    cooldown:
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      nuget-minor-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "nuget"
+      - "dependencies"
+
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    open-pull-requests-limit: 5
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "docker"
+      - "dependencies"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    open-pull-requests-limit: 5
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      actions-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "github_actions"
+      - "dependencies"
